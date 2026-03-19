@@ -1,0 +1,550 @@
+# =============================================================================
+# VitalTriage AI - Dashboard Specification
+# Smart Patient Segmentation Platform
+# =============================================================================
+
+platform:
+  name: "VitalTriage AI"
+  description: "Smart Patient Segmentation & Triage Dashboard System"
+  version: "1.0.0"
+  tech_stack:
+    frontend: "React.js (Vite + TypeScript + Tailwind CSS + shadcn/ui)"
+    backend: "FastAPI (Python)"
+    database: "SQLite (with seed data)"
+    realtime: "WebSocket"
+    charts: "Recharts"
+    icons: "Lucide React"
+
+# =============================================================================
+# Database Entities
+# =============================================================================
+database_entities:
+  users:
+    table: "users"
+    columns:
+      - { name: "id", type: "INTEGER", primary_key: true }
+      - { name: "username", type: "TEXT", unique: true }
+      - { name: "email", type: "TEXT", unique: true }
+      - { name: "hashed_password", type: "TEXT" }
+      - { name: "full_name", type: "TEXT" }
+      - { name: "role", type: "TEXT", enum: ["admin", "manager", "clinician"] }
+      - { name: "is_active", type: "BOOLEAN", default: true }
+      - { name: "created_at", type: "DATETIME" }
+
+  patients:
+    table: "patients"
+    columns:
+      - { name: "id", type: "INTEGER", primary_key: true }
+      - { name: "patient_id", type: "TEXT", unique: true }
+      - { name: "age", type: "INTEGER" }
+      - { name: "gender", type: "TEXT" }
+      - { name: "primary_condition", type: "TEXT" }
+      - { name: "severity_score", type: "INTEGER" }
+      - { name: "treatment_urgency", type: "INTEGER" }
+      - { name: "vital_risk_score", type: "INTEGER" }
+      - { name: "comorbidity_count", type: "INTEGER" }
+      - { name: "recent_admissions_last_6m", type: "INTEGER" }
+      - { name: "medication_adherence", type: "INTEGER" }
+      - { name: "last_visit_days_ago", type: "INTEGER" }
+      - { name: "insurance_type", type: "TEXT" }
+      - { name: "care_plan_assigned", type: "TEXT" }
+      - { name: "doctor_assigned", type: "TEXT" }
+      - { name: "follow_up_required", type: "TEXT" }
+      - { name: "readmission_risk", type: "TEXT" }
+      - { name: "region", type: "TEXT" }
+      - { name: "hospital_branch", type: "TEXT" }
+      - { name: "appointment_status", type: "TEXT" }
+      - { name: "lab_test_pending", type: "TEXT" }
+      - { name: "bed_required", type: "TEXT" }
+      - { name: "icu_required", type: "TEXT" }
+      - { name: "discharge_priority", type: "TEXT" }
+      - { name: "priority_group", type: "TEXT", enum: ["Critical", "Moderate", "Stable"] }
+      - { name: "record_date", type: "DATE" }
+
+  classification_rules:
+    table: "classification_rules"
+    columns:
+      - { name: "id", type: "INTEGER", primary_key: true }
+      - { name: "rule_name", type: "TEXT" }
+      - { name: "description", type: "TEXT" }
+      - { name: "field", type: "TEXT" }
+      - { name: "operator", type: "TEXT", enum: [">=", "<=", "==", ">", "<", "!="] }
+      - { name: "threshold_value", type: "REAL" }
+      - { name: "target_severity", type: "TEXT", enum: ["Critical", "Moderate", "Stable"] }
+      - { name: "priority_order", type: "INTEGER" }
+      - { name: "is_active", type: "BOOLEAN", default: true }
+      - { name: "created_by", type: "INTEGER", foreign_key: "users.id" }
+      - { name: "created_at", type: "DATETIME" }
+      - { name: "updated_at", type: "DATETIME" }
+
+  resources:
+    table: "resources"
+    columns:
+      - { name: "id", type: "INTEGER", primary_key: true }
+      - { name: "resource_type", type: "TEXT", enum: ["bed", "staff", "equipment"] }
+      - { name: "resource_name", type: "TEXT" }
+      - { name: "hospital_branch", type: "TEXT" }
+      - { name: "total_capacity", type: "INTEGER" }
+      - { name: "currently_used", type: "INTEGER" }
+      - { name: "status", type: "TEXT", enum: ["available", "occupied", "maintenance"] }
+      - { name: "updated_at", type: "DATETIME" }
+
+  audit_logs:
+    table: "audit_logs"
+    columns:
+      - { name: "id", type: "INTEGER", primary_key: true }
+      - { name: "user_id", type: "INTEGER", foreign_key: "users.id" }
+      - { name: "action", type: "TEXT" }
+      - { name: "entity_type", type: "TEXT" }
+      - { name: "entity_id", type: "INTEGER" }
+      - { name: "details", type: "TEXT" }
+      - { name: "timestamp", type: "DATETIME" }
+
+  notifications:
+    table: "notifications"
+    columns:
+      - { name: "id", type: "INTEGER", primary_key: true }
+      - { name: "user_id", type: "INTEGER", foreign_key: "users.id" }
+      - { name: "patient_id", type: "TEXT" }
+      - { name: "message", type: "TEXT" }
+      - { name: "severity", type: "TEXT", enum: ["info", "warning", "critical"] }
+      - { name: "is_read", type: "BOOLEAN", default: false }
+      - { name: "created_at", type: "DATETIME" }
+
+  tasks:
+    table: "tasks"
+    columns:
+      - { name: "id", type: "INTEGER", primary_key: true }
+      - { name: "patient_id", type: "TEXT" }
+      - { name: "assigned_to", type: "INTEGER", foreign_key: "users.id" }
+      - { name: "title", type: "TEXT" }
+      - { name: "description", type: "TEXT" }
+      - { name: "status", type: "TEXT", enum: ["pending", "in_progress", "completed"] }
+      - { name: "priority", type: "TEXT", enum: ["low", "medium", "high", "urgent"] }
+      - { name: "due_date", type: "DATETIME" }
+      - { name: "created_at", type: "DATETIME" }
+      - { name: "completed_at", type: "DATETIME", nullable: true }
+
+# =============================================================================
+# Role-Based Dashboards
+# =============================================================================
+dashboards:
+  # ---------------------------------------------------------------------------
+  # ADMIN DASHBOARD
+  # ---------------------------------------------------------------------------
+  admin:
+    role: "admin"
+    page_title: "Admin Control Panel"
+    layout: "sidebar + main content area"
+    sections:
+      - id: "admin_nav"
+        type: "sidebar"
+        components:
+          - { type: "nav_link", label: "Rules Engine", icon: "Settings", route: "/admin/rules" }
+          - { type: "nav_link", label: "Audit Logs", icon: "FileText", route: "/admin/audit" }
+          - { type: "nav_link", label: "System Health", icon: "Activity", route: "/admin/health" }
+          - { type: "nav_link", label: "Users", icon: "Users", route: "/admin/users" }
+          - { type: "nav_link", label: "Notifications", icon: "Bell", route: "/admin/notifications" }
+
+      - id: "rules_management"
+        title: "Classification Rules Engine"
+        type: "panel"
+        components:
+          - type: "data_table"
+            title: "Active Classification Rules"
+            data_source: "GET /api/rules"
+            columns:
+              - { key: "rule_name", label: "Rule Name", sortable: true }
+              - { key: "field", label: "Field", sortable: true }
+              - { key: "operator", label: "Operator" }
+              - { key: "threshold_value", label: "Threshold", sortable: true }
+              - { key: "target_severity", label: "Severity", badge: true }
+              - { key: "is_active", label: "Status", toggle: true }
+              - { key: "actions", label: "Actions", type: "action_buttons" }
+            interactions:
+              - { action: "create", endpoint: "POST /api/rules", dialog: "rule_form" }
+              - { action: "edit", endpoint: "PUT /api/rules/{id}", dialog: "rule_form" }
+              - { action: "delete", endpoint: "DELETE /api/rules/{id}", confirm: true }
+              - { action: "toggle", endpoint: "PATCH /api/rules/{id}/toggle" }
+
+          - type: "form_dialog"
+            id: "rule_form"
+            title: "Classification Rule"
+            fields:
+              - { name: "rule_name", type: "text", label: "Rule Name", required: true }
+              - { name: "description", type: "textarea", label: "Description" }
+              - { name: "field", type: "select", label: "Patient Field", options: ["Severity_Score", "Treatment_Urgency", "Vital_Risk_Score", "ICU_Required", "Comorbidity_Count"] }
+              - { name: "operator", type: "select", label: "Operator", options: [">=", "<=", "==", ">", "<", "!="] }
+              - { name: "threshold_value", type: "number", label: "Threshold Value", required: true }
+              - { name: "target_severity", type: "select", label: "Target Severity", options: ["Critical", "Moderate", "Stable"] }
+              - { name: "priority_order", type: "number", label: "Priority Order" }
+
+      - id: "audit_logs"
+        title: "Audit Logs"
+        type: "panel"
+        components:
+          - type: "data_table"
+            title: "System Audit Trail"
+            data_source: "GET /api/audit-logs"
+            columns:
+              - { key: "timestamp", label: "Timestamp", sortable: true }
+              - { key: "user", label: "User" }
+              - { key: "action", label: "Action", badge: true }
+              - { key: "entity_type", label: "Entity" }
+              - { key: "details", label: "Details" }
+            filters:
+              - { name: "date_range", type: "date_range", label: "Date Range" }
+              - { name: "action", type: "select", label: "Action Type" }
+              - { name: "user", type: "select", label: "User" }
+
+      - id: "system_health"
+        title: "System Performance"
+        type: "panel"
+        components:
+          - type: "kpi_cards"
+            items:
+              - { label: "Total Patients", data_source: "GET /api/stats/patients/count", icon: "Users", color: "blue" }
+              - { label: "Active Rules", data_source: "GET /api/stats/rules/active", icon: "Settings", color: "green" }
+              - { label: "API Latency (ms)", data_source: "GET /api/health", icon: "Zap", color: "yellow" }
+              - { label: "Active Users", data_source: "GET /api/stats/users/active", icon: "UserCheck", color: "purple" }
+
+          - type: "line_chart"
+            title: "Classification Distribution Over Time"
+            data_source: "GET /api/stats/classification-trend"
+            x_axis: "date"
+            series:
+              - { key: "critical", color: "#ef4444", label: "Critical" }
+              - { key: "moderate", color: "#f59e0b", label: "Moderate" }
+              - { key: "stable", color: "#22c55e", label: "Stable" }
+
+  # ---------------------------------------------------------------------------
+  # MANAGER DASHBOARD
+  # ---------------------------------------------------------------------------
+  manager:
+    role: "manager"
+    page_title: "Manager Operations Dashboard"
+    layout: "top KPIs + grid panels"
+    sections:
+      - id: "manager_kpis"
+        title: "Real-Time Patient Load"
+        type: "kpi_row"
+        components:
+          - type: "kpi_cards"
+            data_source: "GET /api/dashboard/summary"
+            items:
+              - { label: "Total Patients", key: "total_patients", icon: "Users", color: "blue" }
+              - { label: "Critical", key: "critical", icon: "AlertTriangle", color: "red" }
+              - { label: "Moderate", key: "moderate", icon: "AlertCircle", color: "amber" }
+              - { label: "Stable", key: "stable", icon: "CheckCircle", color: "green" }
+              - { label: "ICU Occupied", key: "icu_occupied", icon: "Bed", color: "purple" }
+              - { label: "Beds Available", key: "beds_available", icon: "Building", color: "teal" }
+
+      - id: "severity_heatmap"
+        title: "Severity Heatmap"
+        type: "panel"
+        components:
+          - type: "heatmap_chart"
+            title: "Patient Distribution by Region & Severity"
+            data_source: "GET /api/dashboard/heatmap"
+            x_axis: "region"
+            y_axis: "priority_group"
+            value_key: "count"
+            color_scale:
+              critical: "#ef4444"
+              moderate: "#f59e0b"
+              stable: "#22c55e"
+
+      - id: "resource_tracker"
+        title: "Resource Allocation"
+        type: "panel"
+        components:
+          - type: "resource_bars"
+            title: "Resource Utilization"
+            data_source: "GET /api/resources/utilization"
+            categories:
+              - { key: "beds", label: "Beds", icon: "Bed" }
+              - { key: "staff", label: "Staff", icon: "UserCheck" }
+              - { key: "equipment", label: "Equipment", icon: "Stethoscope" }
+            display: "progress_bars"
+            show_percentage: true
+
+          - type: "data_table"
+            title: "Resource Details by Branch"
+            data_source: "GET /api/resources"
+            columns:
+              - { key: "resource_name", label: "Resource" }
+              - { key: "resource_type", label: "Type", badge: true }
+              - { key: "hospital_branch", label: "Branch" }
+              - { key: "total_capacity", label: "Capacity" }
+              - { key: "currently_used", label: "In Use" }
+              - { key: "utilization", label: "Utilization %", type: "progress" }
+              - { key: "status", label: "Status", badge: true }
+
+      - id: "alerts_panel"
+        title: "Threshold Alerts"
+        type: "panel"
+        realtime: true
+        websocket: "ws://api/ws/alerts"
+        components:
+          - type: "alert_list"
+            title: "Active Alerts"
+            data_source: "GET /api/notifications?severity=critical,warning"
+            items:
+              - { field: "patient_id", label: "Patient" }
+              - { field: "message", label: "Alert Message" }
+              - { field: "severity", label: "Severity", badge: true }
+              - { field: "created_at", label: "Time" }
+            interactions:
+              - { action: "acknowledge", endpoint: "PATCH /api/notifications/{id}/read" }
+              - { action: "drill_down", route: "/patients/{patient_id}" }
+
+      - id: "patient_overview"
+        title: "Patient Overview Table"
+        type: "panel"
+        components:
+          - type: "data_table"
+            title: "All Patients (Latest)"
+            data_source: "GET /api/patients/latest"
+            columns:
+              - { key: "patient_id", label: "Patient ID", link: "/patients/{patient_id}" }
+              - { key: "primary_condition", label: "Condition" }
+              - { key: "severity_score", label: "Severity", sortable: true }
+              - { key: "priority_group", label: "Priority", badge: true, sortable: true }
+              - { key: "doctor_assigned", label: "Doctor" }
+              - { key: "hospital_branch", label: "Branch" }
+              - { key: "icu_required", label: "ICU", badge: true }
+              - { key: "appointment_status", label: "Status" }
+            filters:
+              - { name: "priority_group", type: "select", options: ["Critical", "Moderate", "Stable"] }
+              - { name: "region", type: "select", data_source: "GET /api/filters/regions" }
+              - { name: "hospital_branch", type: "select", data_source: "GET /api/filters/branches" }
+            export:
+              - { format: "csv", endpoint: "GET /api/patients/export?format=csv" }
+              - { format: "xlsx", endpoint: "GET /api/patients/export?format=xlsx" }
+
+      - id: "region_chart"
+        title: "Patients by Region"
+        type: "panel"
+        components:
+          - type: "bar_chart"
+            data_source: "GET /api/dashboard/region-stats"
+            x_axis: "region"
+            y_axis: "count"
+            stacked: true
+            series:
+              - { key: "critical", color: "#ef4444", label: "Critical" }
+              - { key: "moderate", color: "#f59e0b", label: "Moderate" }
+              - { key: "stable", color: "#22c55e", label: "Stable" }
+
+  # ---------------------------------------------------------------------------
+  # CLINICIAN DASHBOARD
+  # ---------------------------------------------------------------------------
+  clinician:
+    role: "clinician"
+    page_title: "Clinician Patient View"
+    layout: "patient list + detail panel"
+    sections:
+      - id: "patient_list"
+        title: "My Patients"
+        type: "panel"
+        components:
+          - type: "data_table"
+            title: "Assigned Patients"
+            data_source: "GET /api/patients/assigned"
+            columns:
+              - { key: "patient_id", label: "Patient ID", link: true }
+              - { key: "age", label: "Age" }
+              - { key: "gender", label: "Gender" }
+              - { key: "primary_condition", label: "Condition" }
+              - { key: "severity_score", label: "Severity", sortable: true }
+              - { key: "priority_group", label: "Priority", badge: true }
+              - { key: "appointment_status", label: "Status", badge: true }
+              - { key: "follow_up_required", label: "Follow-Up" }
+            filters:
+              - { name: "priority_group", type: "select", options: ["Critical", "Moderate", "Stable"] }
+              - { name: "follow_up_required", type: "select", options: ["Yes", "No"] }
+
+      - id: "patient_detail"
+        title: "Patient Detail"
+        type: "detail_panel"
+        data_source: "GET /api/patients/{patient_id}"
+        components:
+          - type: "patient_header"
+            fields:
+              - { key: "patient_id", label: "ID" }
+              - { key: "age", label: "Age" }
+              - { key: "gender", label: "Gender" }
+              - { key: "primary_condition", label: "Condition" }
+              - { key: "doctor_assigned", label: "Doctor" }
+              - { key: "hospital_branch", label: "Branch" }
+              - { key: "priority_group", label: "Priority", badge: true }
+
+          - type: "vitals_cards"
+            title: "Current Vitals"
+            items:
+              - { key: "severity_score", label: "Severity Score", max: 10 }
+              - { key: "treatment_urgency", label: "Treatment Urgency", max: 10 }
+              - { key: "vital_risk_score", label: "Vital Risk", max: 10 }
+              - { key: "medication_adherence", label: "Med Adherence %", max: 100 }
+              - { key: "comorbidity_count", label: "Comorbidities" }
+
+          - type: "patient_timeline"
+            title: "Patient History Timeline"
+            data_source: "GET /api/patients/{patient_id}/history"
+            x_axis: "record_date"
+            series:
+              - { key: "severity_score", label: "Severity", color: "#ef4444" }
+              - { key: "treatment_urgency", label: "Urgency", color: "#f59e0b" }
+              - { key: "vital_risk_score", label: "Vital Risk", color: "#3b82f6" }
+              - { key: "medication_adherence", label: "Med Adherence", color: "#22c55e" }
+
+      - id: "triage_recommendation"
+        title: "Triage Recommendation"
+        type: "panel"
+        components:
+          - type: "triage_card"
+            data_source: "POST /api/triage/classify"
+            display:
+              - { field: "priority_group", label: "Recommended Classification", style: "badge_large" }
+              - { field: "reasoning", label: "Rule Engine Reasoning" }
+            actions:
+              - { label: "Accept & Apply", endpoint: "POST /api/triage/apply" }
+              - { label: "Override", dialog: "override_form" }
+
+      - id: "task_list"
+        title: "Intervention Tasks"
+        type: "panel"
+        components:
+          - type: "task_board"
+            data_source: "GET /api/tasks"
+            columns_layout: ["pending", "in_progress", "completed"]
+            task_fields:
+              - { key: "title", label: "Task" }
+              - { key: "patient_id", label: "Patient" }
+              - { key: "priority", label: "Priority", badge: true }
+              - { key: "due_date", label: "Due Date" }
+            interactions:
+              - { action: "create", endpoint: "POST /api/tasks", dialog: "task_form" }
+              - { action: "update_status", endpoint: "PATCH /api/tasks/{id}/status" }
+              - { action: "complete", endpoint: "PATCH /api/tasks/{id}/complete" }
+
+      - id: "notification_center"
+        title: "Notification Center"
+        type: "panel"
+        realtime: true
+        websocket: "ws://api/ws/notifications"
+        components:
+          - type: "notification_list"
+            data_source: "GET /api/notifications"
+            fields:
+              - { key: "message", label: "Notification" }
+              - { key: "severity", label: "Type", badge: true }
+              - { key: "patient_id", label: "Patient" }
+              - { key: "created_at", label: "Time" }
+            interactions:
+              - { action: "mark_read", endpoint: "PATCH /api/notifications/{id}/read" }
+              - { action: "mark_all_read", endpoint: "PATCH /api/notifications/read-all" }
+
+# =============================================================================
+# API Endpoints
+# =============================================================================
+api_endpoints:
+  auth:
+    - { method: "POST", path: "/api/auth/login", description: "User login" }
+    - { method: "POST", path: "/api/auth/register", description: "Register new user (admin only)" }
+    - { method: "GET", path: "/api/auth/me", description: "Get current user" }
+
+  patients:
+    - { method: "GET", path: "/api/patients", description: "List all patients" }
+    - { method: "GET", path: "/api/patients/latest", description: "Latest patient records" }
+    - { method: "GET", path: "/api/patients/assigned", description: "Patients assigned to current clinician" }
+    - { method: "GET", path: "/api/patients/{patient_id}", description: "Get patient details" }
+    - { method: "GET", path: "/api/patients/{patient_id}/history", description: "Patient history timeline" }
+    - { method: "GET", path: "/api/patients/export", description: "Export patients (CSV/XLSX)" }
+
+  rules:
+    - { method: "GET", path: "/api/rules", description: "List classification rules" }
+    - { method: "POST", path: "/api/rules", description: "Create a rule" }
+    - { method: "PUT", path: "/api/rules/{id}", description: "Update a rule" }
+    - { method: "DELETE", path: "/api/rules/{id}", description: "Delete a rule" }
+    - { method: "PATCH", path: "/api/rules/{id}/toggle", description: "Toggle rule active/inactive" }
+
+  dashboard:
+    - { method: "GET", path: "/api/dashboard/summary", description: "Dashboard KPI summary" }
+    - { method: "GET", path: "/api/dashboard/heatmap", description: "Severity heatmap data" }
+    - { method: "GET", path: "/api/dashboard/region-stats", description: "Region statistics" }
+
+  resources:
+    - { method: "GET", path: "/api/resources", description: "List resources" }
+    - { method: "GET", path: "/api/resources/utilization", description: "Resource utilization summary" }
+    - { method: "POST", path: "/api/resources", description: "Create resource" }
+    - { method: "PUT", path: "/api/resources/{id}", description: "Update resource" }
+
+  triage:
+    - { method: "POST", path: "/api/triage/classify", description: "Classify a patient" }
+    - { method: "POST", path: "/api/triage/apply", description: "Apply triage result" }
+
+  tasks:
+    - { method: "GET", path: "/api/tasks", description: "List tasks" }
+    - { method: "POST", path: "/api/tasks", description: "Create task" }
+    - { method: "PATCH", path: "/api/tasks/{id}/status", description: "Update task status" }
+    - { method: "PATCH", path: "/api/tasks/{id}/complete", description: "Complete a task" }
+
+  notifications:
+    - { method: "GET", path: "/api/notifications", description: "List notifications" }
+    - { method: "PATCH", path: "/api/notifications/{id}/read", description: "Mark notification read" }
+    - { method: "PATCH", path: "/api/notifications/read-all", description: "Mark all read" }
+
+  audit:
+    - { method: "GET", path: "/api/audit-logs", description: "List audit logs" }
+
+  stats:
+    - { method: "GET", path: "/api/stats/patients/count", description: "Patient count" }
+    - { method: "GET", path: "/api/stats/rules/active", description: "Active rules count" }
+    - { method: "GET", path: "/api/stats/users/active", description: "Active users count" }
+    - { method: "GET", path: "/api/stats/classification-trend", description: "Classification trend" }
+
+  filters:
+    - { method: "GET", path: "/api/filters/regions", description: "Available regions" }
+    - { method: "GET", path: "/api/filters/branches", description: "Hospital branches" }
+
+  websocket:
+    - { path: "/ws/alerts", description: "Real-time severity alerts" }
+    - { path: "/ws/notifications", description: "Real-time notifications" }
+
+# =============================================================================
+# Mock Data Examples
+# =============================================================================
+mock_data:
+  users:
+    - { username: "admin1", email: "admin@vitaltriage.ai", role: "admin", full_name: "System Admin" }
+    - { username: "manager1", email: "manager@vitaltriage.ai", role: "manager", full_name: "Dr. Operations Manager" }
+    - { username: "drsmith", email: "smith@vitaltriage.ai", role: "clinician", full_name: "Dr. Smith" }
+    - { username: "drlee", email: "lee@vitaltriage.ai", role: "clinician", full_name: "Dr. Lee" }
+    - { username: "drpatel", email: "patel@vitaltriage.ai", role: "clinician", full_name: "Dr. Patel" }
+
+  classification_rules:
+    - { rule_name: "ICU Auto-Critical", field: "ICU_Required", operator: "==", threshold_value: 1, target_severity: "Critical", priority_order: 1 }
+    - { rule_name: "High Severity", field: "Severity_Score", operator: ">=", threshold_value: 8, target_severity: "Critical", priority_order: 2 }
+    - { rule_name: "Urgent + Risky", field: "Treatment_Urgency", operator: ">=", threshold_value: 8, target_severity: "Critical", priority_order: 3 }
+    - { rule_name: "Moderate Range", field: "Severity_Score", operator: ">=", threshold_value: 5, target_severity: "Moderate", priority_order: 4 }
+    - { rule_name: "Default Stable", field: "Severity_Score", operator: "<", threshold_value: 5, target_severity: "Stable", priority_order: 5 }
+
+  resources:
+    - { resource_type: "bed", resource_name: "ICU Bed A1", hospital_branch: "Central Hospital", total_capacity: 1, currently_used: 1 }
+    - { resource_type: "bed", resource_name: "ICU Bed A2", hospital_branch: "Central Hospital", total_capacity: 1, currently_used: 0 }
+    - { resource_type: "bed", resource_name: "General Ward B1-B10", hospital_branch: "Central Hospital", total_capacity: 10, currently_used: 7 }
+    - { resource_type: "bed", resource_name: "General Ward C1-C8", hospital_branch: "General Hospital", total_capacity: 8, currently_used: 5 }
+    - { resource_type: "staff", resource_name: "Nurses (Day Shift)", hospital_branch: "Central Hospital", total_capacity: 20, currently_used: 16 }
+    - { resource_type: "staff", resource_name: "Nurses (Night Shift)", hospital_branch: "Central Hospital", total_capacity: 15, currently_used: 12 }
+    - { resource_type: "staff", resource_name: "Doctors On-Call", hospital_branch: "General Hospital", total_capacity: 8, currently_used: 6 }
+    - { resource_type: "equipment", resource_name: "Ventilators", hospital_branch: "Central Hospital", total_capacity: 10, currently_used: 4 }
+    - { resource_type: "equipment", resource_name: "Cardiac Monitors", hospital_branch: "General Hospital", total_capacity: 12, currently_used: 8 }
+    - { resource_type: "equipment", resource_name: "Infusion Pumps", hospital_branch: "West Clinic", total_capacity: 6, currently_used: 3 }
+
+  notifications:
+    - { patient_id: "P001", message: "Severity score increased to 9 - ICU admission required", severity: "critical" }
+    - { patient_id: "P004", message: "Chronic Kidney Disease patient showing elevated vital risk", severity: "critical" }
+    - { patient_id: "P006", message: "COPD patient ICU threshold crossed", severity: "warning" }
+    - { patient_id: "P008", message: "Pneumonia patient severity trending upward", severity: "warning" }
+    - { patient_id: "P003", message: "Asthma patient stable - discharge candidate", severity: "info" }
