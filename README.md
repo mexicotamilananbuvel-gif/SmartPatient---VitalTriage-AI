@@ -1,0 +1,1 @@
+# SmartPatient---VitalTriage-AI
